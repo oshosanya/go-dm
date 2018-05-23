@@ -30,6 +30,26 @@ func DownloadsFolder() string {
 	return downloadsFolder
 }
 
+func DownloadFile(url string, fileName string) {
+	filePath := strings.Join([]string{DownloadsFolder(), fileName}, "")
+	fmt.Printf("Saving to File Path: %s \n", filePath)
+	out, err := os.Create(filePath)
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+	response, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
+	defer response.Body.Close()
+	fmt.Println("Writing to file")
+	_, err = io.Copy(out, response.Body)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func DownloadRoutine(url string, downloadDef RoutineDefinition, wg *sync.WaitGroup) {
 	filePath := strings.Join([]string{DownloadsFolder(), downloadDef.FileName}, "")
 	out, err := os.Create(filePath)

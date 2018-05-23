@@ -16,7 +16,7 @@ import (
 
 var wg sync.WaitGroup
 
-func main() {
+func no() {
 	// argsWithoutProgName := os.Args[1:]
 	url := "http://31.210.87.4/ringtones_new/fullmp3low/t/Timaya_feat_Phyno_feat_Olamide_Telli_Person.mp3?get=jjj"
 	numberOfRoutines := 4
