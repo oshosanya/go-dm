@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/oshosanya/go-dm/counter"
 	"github.com/oshosanya/go-dm/download"
 	"github.com/oshosanya/go-dm/util"
 )
@@ -72,8 +73,9 @@ func no() {
 				newStartRange = downloadDef.EndRange + 1
 			}
 			allDownloadDefs = append(allDownloadDefs, downloadDef)
+			counter := counter.DataTransferred{}
 			wg.Add(1)
-			go download.DownloadRoutine(url, downloadDef, &wg)
+			go download.DownloadRoutine(url, downloadDef, &wg, &counter)
 		}
 		wg.Wait()
 

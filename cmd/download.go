@@ -1,4 +1,4 @@
-// Copyright © 2018 NAME HERE <EMAIL ADDRESS>
+// Copyright © 2018 NAME HERE <michaeloshosanya@gmail.com>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/oshosanya/go-dm/counter"
 	dl "github.com/oshosanya/go-dm/download"
 	"github.com/oshosanya/go-dm/util"
 	"github.com/spf13/cobra"
@@ -38,7 +39,7 @@ var downloadCmd = &cobra.Command{
 	Short: "Download the file from the given url",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(strings.Join(args, ""))
+		// fmt.Println(strings.Join(args, ""))
 		download(strings.Join(args, ""))
 	},
 }
@@ -78,15 +79,30 @@ func download(url string) {
 		panic(err)
 	}
 	fileName := util.GetFileNameFromURL(url)
-	fmt.Println(fileName)
+	// fmt.Println(fileName)
+	filePath := strings.Join([]string{dl.DownloadsFolder(), fileName}, "")
+	fmt.Printf("Saving file to: %s", filePath)
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		print("\033[K")
+		fmt.Print("File already exist, do you want to overwrite it? Y or N \n")
+		reader := bufio.NewReader(os.Stdin)
+		text, _ := reader.ReadString('\n')
+		// print(text == "Y\n")
+		if text != "Y\n" && text != "y\n" {
+			println("Exiting...")
+			os.Exit(0)
+		}
+	}
 	if len(response.Header.Get("Content-Length")) > 0 {
 		contentLength, _ := strconv.Atoi(response.Header.Get("Content-Length"))
-		fmt.Printf("Content Lenth is : %d", contentLength)
+		// fmt.Printf("Content Lenth is : %d", contentLength)
 		contentLengthPerRoutine := int(math.Ceil(float64(int64(contentLength) / numOfThreads)))
-		fmt.Printf("Content Lenth per routine : %d", contentLengthPerRoutine)
+		// fmt.Printf("Content Lenth per routine : %d", contentLengthPerRoutine)
 		newStartRange := contentLengthPerRoutine + 1
 		var allDownloadDefs []dl.RoutineDefinition
 		var downloadDef dl.RoutineDefinition
+		counter := counter.DataTransferred{}
+		counter.TotalCount = contentLength
 		for i := int64(0); i < numOfThreads; i++ {
 			if i == 0 {
 				downloadDef = dl.RoutineDefinition{
@@ -113,24 +129,12 @@ func download(url string) {
 			}
 			allDownloadDefs = append(allDownloadDefs, downloadDef)
 			wg.Add(1)
-			go dl.DownloadRoutine(url, downloadDef, &wg)
+			go dl.DownloadRoutine(url, downloadDef, &wg, &counter)
 		}
 		wg.Wait()
 
 		filePath := strings.Join([]string{dl.DownloadsFolder(), fileName}, "")
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			dl.MergeFiles(filePath, allDownloadDefs)
-		} else {
-			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("File already exist, do you want to overwrite it? Y or N \n")
-			text, _ := reader.ReadString('\n')
-			if text == "Y" {
-				dl.MergeFiles(filePath, allDownloadDefs)
-			} else {
-
-			}
-		}
-
+		dl.MergeFiles(filePath, allDownloadDefs)
 	} else {
 		contentLength := "indefinite"
 		fmt.Printf("Content-Length is: %s \n", contentLength)

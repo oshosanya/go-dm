@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/oshosanya/go-dm/counter"
 )
 
 //RoutineDefinition Struct defining a segment to be downloaded by goroutine
@@ -43,14 +45,16 @@ func DownloadFile(url string, fileName string) {
 		panic(err)
 	}
 	defer response.Body.Close()
-	fmt.Println("Writing to file")
 	_, err = io.Copy(out, response.Body)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func DownloadRoutine(url string, downloadDef RoutineDefinition, wg *sync.WaitGroup) {
+func DownloadRoutine(url string, downloadDef RoutineDefinition, wg *sync.WaitGroup, counter *counter.DataTransferred) {
+	defer wg.Done()
+	wg2 := sync.WaitGroup{}
+
 	filePath := strings.Join([]string{DownloadsFolder(), downloadDef.FileName}, "")
 	out, err := os.Create(filePath)
 	if err != nil {
@@ -71,17 +75,15 @@ func DownloadRoutine(url string, downloadDef RoutineDefinition, wg *sync.WaitGro
 		panic(err)
 	}
 	defer response.Body.Close()
-	fmt.Println("Writing to file")
-	_, err = io.Copy(out, response.Body)
-	if err != nil {
-		panic(err)
-	}
-	wg.Done()
+	wg2.Add(1)
+	go CopyResponseToFile(response, out, counter, &wg2)
+	// wg2.Wait()
+	// _, err = io.Copy(out, response.Body)
+	wg2.Wait()
 }
 
 //MergeFiles Merge all downloaded segments into one file
 func MergeFiles(filePath string, allDownloadDefs []RoutineDefinition) {
-	fmt.Printf("File Path: %s", filePath)
 	out, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	fmt.Printf("Merging files into: %s", filePath)
 	if err != nil {
@@ -94,5 +96,30 @@ func MergeFiles(filePath string, allDownloadDefs []RoutineDefinition) {
 			panic(err)
 		}
 		out.Write(downloaded)
+	}
+}
+
+func CopyResponseToFile(resp *http.Response, out *os.File, counter *counter.DataTransferred, wg2 *sync.WaitGroup) {
+	defer wg2.Done()
+	buf := make([]byte, 1024)
+	for {
+		_, err := io.ReadFull(resp.Body, buf)
+		if err != nil {
+			if err == io.ErrUnexpectedEOF {
+				// println("End of file reached")
+				break
+			}
+			fmt.Printf("Error occurred while copying %s \n", err)
+			panic("Die")
+		}
+		written, err := out.Write(buf)
+		if err != nil {
+			fmt.Printf("Error occurred while writing %s \n", err)
+			panic("Die")
+		}
+		// wg2.Add(1)
+		counter.Inc(written)
+		// wg2.Add(1)
+		counter.PrintValue()
 	}
 }
