@@ -24,9 +24,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/oshosanya/go-dm/counter"
-	dl "github.com/oshosanya/go-dm/download"
-	"github.com/oshosanya/go-dm/util"
+	"github.com/oshosanya/go-dm/pkg/counter"
+	dl "github.com/oshosanya/go-dm/pkg/download"
+	"github.com/oshosanya/go-dm/pkg/util"
 	"github.com/spf13/cobra"
 )
 
@@ -67,10 +67,8 @@ func download(url string) {
 		panic(fmt.Sprintf("URL %s is not valid", url))
 	}
 
-	if !strings.Contains(url, "http://") && !strings.Contains(url, "https://") {
-		appended := []string{"http://", url}
-		url = strings.Join(appended, "")
-	}
+	url, err = util.BuildURL(url)
+
 	fmt.Printf("Initiating connection to: %s \n", url)
 	client := &http.Client{}
 	request, err := http.NewRequest("HEAD", url, nil)
@@ -79,7 +77,7 @@ func download(url string) {
 		panic(err)
 	}
 	fileName := util.GetFileNameFromURL(url)
-	// fmt.Println(fileName)
+
 	filePath := strings.Join([]string{dl.DownloadsFolder(), fileName}, "")
 	fmt.Printf("Saving file to: %s", filePath)
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
@@ -87,58 +85,44 @@ func download(url string) {
 		fmt.Print("File already exist, do you want to overwrite it? Y or N \n")
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
-		// print(text == "Y\n")
-		if text != "Y\n" && text != "y\n" {
+		text = strings.ToLower(text)
+		if text != "y\n" {
 			println("Exiting...")
 			os.Exit(0)
 		}
 	}
-	if len(response.Header.Get("Content-Length")) > 0 {
-		contentLength, _ := strconv.Atoi(response.Header.Get("Content-Length"))
-		// fmt.Printf("Content Lenth is : %d", contentLength)
-		contentLengthPerRoutine := int(math.Ceil(float64(int64(contentLength) / numOfThreads)))
-		// fmt.Printf("Content Lenth per routine : %d", contentLengthPerRoutine)
-		newStartRange := contentLengthPerRoutine + 1
-		var allDownloadDefs []dl.RoutineDefinition
-		var downloadDef dl.RoutineDefinition
-		counter := counter.DataTransferred{}
-		counter.TotalCount = contentLength
-		for i := int64(0); i < numOfThreads; i++ {
-			if i == 0 {
-				downloadDef = dl.RoutineDefinition{
-					StartRange:  0,
-					EndRange:    contentLengthPerRoutine,
-					CurrentSize: 0,
-					FileName:    strings.Join([]string{fileName, strconv.Itoa(int(i))}, ""),
-				}
-			} else if newStartRange+contentLengthPerRoutine > contentLength {
-				downloadDef = dl.RoutineDefinition{
-					StartRange:  newStartRange,
-					EndRange:    contentLength,
-					CurrentSize: 0,
-					FileName:    strings.Join([]string{fileName, strconv.Itoa(int(i))}, ""),
-				}
-			} else {
-				downloadDef = dl.RoutineDefinition{
-					StartRange:  newStartRange,
-					EndRange:    newStartRange + contentLengthPerRoutine,
-					CurrentSize: 0,
-					FileName:    strings.Join([]string{fileName, strconv.Itoa(int(i))}, ""),
-				}
-				newStartRange = downloadDef.EndRange + 1
-			}
-			allDownloadDefs = append(allDownloadDefs, downloadDef)
-			wg.Add(1)
-			go dl.DownloadRoutine(url, downloadDef, &wg, &counter)
-		}
-		wg.Wait()
-
-		filePath := strings.Join([]string{dl.DownloadsFolder(), fileName}, "")
-		dl.MergeFiles(filePath, allDownloadDefs)
-	} else {
+	if !(len(response.Header.Get("Content-Length")) > 0) {
 		contentLength := "indefinite"
 		fmt.Printf("Content-Length is: %s \n", contentLength)
 		fileName := util.GetFileNameFromURL(url)
 		dl.DownloadFile(url, fileName)
+		return
 	}
+	contentLength, _ := strconv.Atoi(response.Header.Get("Content-Length"))
+	contentLengthPerRoutine := int(math.Ceil(float64(int64(contentLength) / numOfThreads)))
+	newStartRange := contentLengthPerRoutine + 1
+	var allDownloadDefs []dl.RoutineDefinition
+	var downloadDef dl.RoutineDefinition
+	counter := counter.DataTransferred{}
+	counter.TotalCount = contentLength
+	for i := int64(0); i < numOfThreads; i++ {
+		if i == 0 {
+			routineDownloadFileName := util.BuildRoutineDownloadFileName(i, fileName)
+			downloadDef = util.BuildRouteDefinition(i, 0, contentLengthPerRoutine, routineDownloadFileName)
+		} else if newStartRange+contentLengthPerRoutine > contentLength {
+			routineDownloadFileName := util.BuildRoutineDownloadFileName(i, fileName)
+			downloadDef = util.BuildRouteDefinition(i, newStartRange, contentLength, routineDownloadFileName)
+		} else {
+			routineDownloadFileName := util.BuildRoutineDownloadFileName(i, fileName)
+			downloadDef = util.BuildRouteDefinition(i, newStartRange, newStartRange+contentLengthPerRoutine, routineDownloadFileName)
+			newStartRange = downloadDef.EndRange + 1
+		}
+		allDownloadDefs = append(allDownloadDefs, downloadDef)
+		wg.Add(1)
+		go dl.DownloadRoutine(url, downloadDef, &wg, &counter)
+	}
+	wg.Wait()
+
+	//Combine indiviaual routine downloads into one file
+	dl.MergeFiles(filePath, allDownloadDefs)
 }

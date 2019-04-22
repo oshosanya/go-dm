@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package protobuf;
+
+message Download {
+    string url = 1;
+    int64 content_length = 2;
+    int64 bytes_downloaded = 4;
+    bool done = 3;
+}
+
+message DownloadList {
+    repeated Download download_item = 1;
+}
+
+message Void {}
+
+service Downloads {
+    rpc Add (Download) returns (Download);
+    rpc List (Void) returns (DownloadList);
+}

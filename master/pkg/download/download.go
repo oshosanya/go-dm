@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/oshosanya/go-dm/counter"
+	"github.com/oshosanya/go-dm/master/pkg/counter"
 )
 
 //RoutineDefinition Struct defining a segment to be downloaded by goroutine
@@ -96,6 +96,7 @@ func MergeFiles(filePath string, allDownloadDefs []RoutineDefinition) {
 			panic(err)
 		}
 		out.Write(downloaded)
+		os.Remove(strings.Join([]string{DownloadsFolder(), d.FileName}, ""))
 	}
 }
 
